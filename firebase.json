@@ -7,9 +7,9 @@
       "**/node_modules/**",
       "**/.venv/**",
       "**/gtfs_subway/**",
+      "**/.github/**",
       "process_gtfs.py",
-      "sample_travel_times.json",
-      "README.md"
+      "sample_travel_times.json"
     ],
     "rewrites": [
       {
