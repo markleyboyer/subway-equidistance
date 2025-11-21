@@ -320,7 +320,7 @@
                                 properties: {
                                     id: station.id,
                                     name: station.name,
-                                    routeText: (station.routes && station.routes.length > 0) ? station.routes.join(' ') : ''
+                                    routeText: (station.routes && station.routes.length > 0) ? station.routes.map(r => r.name).join(' ') : ''
                                 },
                                 geometry: {
                                     type: 'Point',
@@ -336,9 +336,9 @@
                         type: 'circle',
                         source: 'stations',
                         paint: {
-                            'circle-radius': 8,
+                            'circle-radius': 6,
                             'circle-color': '#ffffff',
-                            'circle-stroke-width': 2,
+                            'circle-stroke-width': 0,
                             'circle-stroke-color': '#007cbf'
                         }
                     });
@@ -466,7 +466,7 @@
                     map.current.setPaintProperty('station-circles', 'circle-radius', [
                         'case',
                         ['in', ['get', 'id'], ['literal', selectedIds]], 12,
-                        8
+                        6
                     ]);
 
                     map.current.setPaintProperty('station-circles', 'circle-stroke-width', 2);
@@ -474,9 +474,9 @@
                 } else {
                     // Reset to defaults when no stations selected
                     map.current.setPaintProperty('station-circles', 'circle-color', '#ffffff');
-                    map.current.setPaintProperty('station-circles', 'circle-radius', 8);
-                    map.current.setPaintProperty('station-circles', 'circle-stroke-width', 2);
-                    map.current.setPaintProperty('station-circles', 'circle-stroke-color', '#007cbf');
+                    map.current.setPaintProperty('station-circles', 'circle-radius', 6);
+                    map.current.setPaintProperty('station-circles', 'circle-stroke-width', 0);
+                    map.current.setPaintProperty('station-circles', 'circle-stroke-color', 'transparent');
                     map.current.setPaintProperty('station-circles', 'circle-opacity', 1);
                 }
             }, [stationA, stationB, mapLoaded, selectionMode]);
