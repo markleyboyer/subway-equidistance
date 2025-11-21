@@ -229,7 +229,8 @@
             // Load travel times data
             useEffect(() => {
                 addDebugLog('Loading travel times data...', 'info');
-                fetch('travel_times.json')
+                // Add cache-busting parameter to force reload
+                fetch('travel_times.json?v=' + Date.now())
                     .then(response => response.json())
                     .then(data => {
                         TRAVEL_DATA = data;
