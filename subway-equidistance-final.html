@@ -236,6 +236,14 @@
                         TRAVEL_DATA = data;
                         STATIONS = Object.values(data.stations);
                         addDebugLog(`Loaded ${STATIONS.length} stations`, 'success');
+                        
+                        // Debug: Check connectivity
+                        const sampleStation = Object.keys(data.travel_times)[0];
+                        const sampleTimes = data.travel_times[sampleStation];
+                        const nullCount = Object.values(sampleTimes).filter(t => t === null).length;
+                        const validCount = Object.values(sampleTimes).filter(t => t !== null).length;
+                        console.log(`DEBUG: Sample station ${sampleStation} can reach ${validCount}/${validCount + nullCount} stations`);
+                        
                         setDataLoaded(true);
                     })
                     .catch(error => {
@@ -311,7 +319,8 @@
                                 type: 'Feature',
                                 properties: {
                                     id: station.id,
-                                    name: station.name
+                                    name: station.name,
+                                    routeText: (station.routes && station.routes.length > 0) ? station.routes.join(' ') : ''
                                 },
                                 geometry: {
                                     type: 'Point',
@@ -333,25 +342,6 @@
                             'circle-stroke-color': '#007cbf'
                         }
                     });
-
-                    // Add station labels
-                    map.current.addLayer({
-                        id: 'station-labels',
-                        type: 'symbol',
-                        source: 'stations',
-                        layout: {
-                            'text-field': ['get', 'name'],
-                            'text-size': 11,
-                            'text-offset': [0, 1.5],
-                            'text-anchor': 'top'
-                        },
-                        paint: {
-                            'text-color': '#ffffff',
-                            'text-halo-color': '#000000',
-                            'text-halo-width': 1
-                        }
-                    });
-
                     // Station click handler
                     const handleStationClick = (e) => {
                         if (!selectionModeRef.current) {
@@ -391,8 +381,32 @@
                         const timeToA = timesFromA[stationId] !== undefined ? timesFromA[stationId] : 999;
                         const timeToB = timesFromB[stationId] !== undefined ? timesFromB[stationId] : 999;
                         
+                        // Debug logging for "Not connected" issue
+                        if (timeToA === 999 || timeToB === 999 || timeToA === null || timeToB === null) {
+                            console.log(`DEBUG HOVER: ${station.name} (${stationId})`);
+                            console.log(`  Station A: ${stationARef.current.name} (${stationARef.current.id})`);
+                            console.log(`  Station B: ${stationBRef.current.name} (${stationBRef.current.id})`);
+                            console.log(`  timeToA raw:`, timesFromA[stationId]);
+                            console.log(`  timeToB raw:`, timesFromB[stationId]);
+                            console.log(`  timeToA final:`, timeToA);
+                            console.log(`  timeToB final:`, timeToB);
+                        }
+                        
                         const timeADisplay = timeToA === 999 ? '<span style="font-size: 10px; opacity: 0.7;">Not connected</span>' : timeToA.toFixed(1) + ' min';
                         const timeBDisplay = timeToB === 999 ? '<span style="font-size: 10px; opacity: 0.7;">Not connected</span>' : timeToB.toFixed(1) + ' min';
+                        
+                        // Create MTA-style route badges
+                        let routeBadges = '';
+                        if (station.routes && station.routes.length > 0) {
+                            routeBadges = station.routes.map(route => {
+                                const bgColor = `#${route.color}`;
+                                const textColor = `#${route.text_color}`;
+                                return `<span style="display: inline-block; background: ${bgColor}; color: ${textColor}; 
+                                    width: 22px; height: 22px; border-radius: 50%; text-align: center; 
+                                    line-height: 22px; font-weight: bold; font-size: 12px; margin: 0 2px; 
+                                    font-family: Helvetica, Arial, sans-serif;">${route.name}</span>`;
+                            }).join('');
+                        }
                         
                         let explanationText = '';
                         if (timeToA === 999 || timeToB === 999) {
@@ -410,6 +424,7 @@
                                 <div style="font-weight: bold; margin-bottom: 5px; border-bottom: 1px solid #555; padding-bottom: 3px; color: #fff;">
                                     ${station.name}
                                 </div>
+                                ${routeBadges ? `<div style="margin: 5px 0; line-height: 26px;">${routeBadges}</div>` : ''}
                                 <div style="color: #FFD700; font-weight: bold; margin: 3px 0;">
                                     ↓ ${stationARef.current.name}: ${timeADisplay}
                                 </div>
@@ -533,25 +548,31 @@
                                 color = '#666666';
                             }
                         } else {
-                            const diff = timeToA - timeToB; // positive = closer to A (yellow), negative = closer to B (blue)
+                            // Calculate which station is closer
+                            const diff = timeToA - timeToB; // positive = closer to B, negative = closer to A
                             const maxDiff = 20; // minutes - used for gradient scaling
                             
-                            if (Math.abs(diff) <= 5) {
-                                color = '#00FF00'; // Pure green for equidistant (within 5 min)
+                            if (Math.abs(diff) <= 3) {
+                                // Equidistant - pure green
+                                color = '#00FF00';
                                 isEquidistant = true;
-                            } else if (diff > 5) {
-                                // Closer to A (yellow) - gradient from yellow (#FFD700 = rgb(255,215,0)) to green (0,255,0)
-                                const ratio = Math.min((diff - 5) / maxDiff, 1);
-                                const r = 255;
-                                const g = Math.floor(215 - 215 * (1 - ratio) * 0.3); // Subtle shift toward green
+                            } else if (diff < -3) {
+                                // Closer to A (yellow)
+                                // Gradient from yellow (#FFD700) to green (#00FF00)
+                                const ratio = Math.min(Math.abs(diff + 3) / maxDiff, 1);
+                                // Yellow: rgb(255, 215, 0), Green: rgb(0, 255, 0)
+                                const r = Math.floor(255 * (1 - ratio));
+                                const g = Math.floor(215 + (255 - 215) * ratio);
                                 const b = 0;
                                 color = `rgb(${r}, ${g}, ${b})`;
                             } else {
-                                // Closer to B (blue) - gradient from blue (#1E90FF = rgb(30,144,255)) to green (0,255,0)
-                                const ratio = Math.min((Math.abs(diff) - 5) / maxDiff, 1);
-                                const r = Math.floor(30 * (1 - ratio * 0.3));
-                                const g = Math.floor(144 + (255 - 144) * (1 - ratio) * 0.3); // Subtle shift toward green
-                                const b = 255;
+                                // Closer to B (blue)
+                                // Gradient from blue (#1E90FF) to green (#00FF00)
+                                const ratio = Math.min((diff - 3) / maxDiff, 1);
+                                // Blue: rgb(30, 144, 255), Green: rgb(0, 255, 0)
+                                const r = Math.floor(30 * (1 - ratio));
+                                const g = Math.floor(144 + (255 - 144) * ratio);
+                                const b = Math.floor(255 * (1 - ratio));
                                 color = `rgb(${r}, ${g}, ${b})`;
                             }
                         }
@@ -778,18 +799,48 @@
                         }
                     }
 
-                    // Reset ALL station styling to default - use setLayoutProperty and setPaintProperty
-                    // We need to reset these to their original values from map initialization
+                    // Completely remove and recreate the station layer to ensure clean reset
+                    if (map.current.getLayer('station-labels')) {
+                        map.current.removeLayer('station-labels');
+                    }
                     if (map.current.getLayer('station-circles')) {
-                        map.current.setPaintProperty('station-circles', 'circle-color', '#ffffff');
-                        map.current.setPaintProperty('station-circles', 'circle-radius', 8);
-                        map.current.setPaintProperty('station-circles', 'circle-stroke-width', 2);
-                        map.current.setPaintProperty('station-circles', 'circle-stroke-color', '#007cbf');
-                        map.current.setPaintProperty('station-circles', 'circle-opacity', 1);
+                        map.current.removeLayer('station-circles');
                     }
                     
-                    // Force the map to re-render
-                    map.current.triggerRepaint();
+                    // Add station circles layer
+                    map.current.addLayer({
+                        id: 'station-circles',
+                        type: 'circle',
+                        source: 'stations',
+                        paint: {
+                            'circle-color': '#ffffff',
+                            'circle-radius': 6,
+                            'circle-opacity': 1,
+                            'circle-stroke-width': 0,  // No outer circle
+                            'circle-stroke-color': 'transparent'
+                        }
+                    });
+
+                    // Recreate station route labels layer
+                    map.current.addLayer({
+                        id: 'station-route-labels',
+                        type: 'symbol',
+                        source: 'stations',
+                        layout: {
+                            'text-field': ['get', 'routeText'],
+                            'text-size': 9,
+                            'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                            'text-offset': [0, -1.2],
+                            'text-anchor': 'bottom',
+                            'text-allow-overlap': false,
+                            'text-optional': true
+                        },
+                        paint: {
+                            'text-color': '#FFD700',
+                            'text-halo-color': '#000000',
+                            'text-halo-width': 1.5
+                        }
+                    });
                     
                     // Update refs immediately BEFORE state
                     stationARef.current = null;

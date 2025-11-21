@@ -26,6 +26,11 @@ class Station:
     name: str
     lat: float
     lon: float
+    routes: List[str] = None  # Routes serving this station
+    
+    def __post_init__(self):
+        if self.routes is None:
+            self.routes = []
     
 @dataclass
 class Connection:
@@ -61,6 +66,60 @@ def read_stops(gtfs_dir: str) -> Dict[str, Station]:
                 )
     
     return stations
+
+def add_routes_to_stations(stations: Dict[str, Station], gtfs_dir: str):
+    """Add route information to each station."""
+    # Read route colors
+    route_info = {}
+    with open(f"{gtfs_dir}/routes.txt", 'r', encoding='utf-8-sig') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            route_id = row['route_id']
+            route_info[route_id] = {
+                'name': row['route_short_name'],
+                'color': row['route_color'],
+                'text_color': row['route_text_color']
+            }
+    
+    # Read trips to get route info
+    trip_routes = {}
+    with open(f"{gtfs_dir}/trips.txt", 'r', encoding='utf-8-sig') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            trip_routes[row['trip_id']] = row['route_id']
+    
+    # Read stop_times to find which routes serve each station
+    station_routes = defaultdict(set)
+    with open(f"{gtfs_dir}/stop_times.txt", 'r', encoding='utf-8-sig') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            trip_id = row['trip_id']
+            stop_id = row['stop_id']
+            
+            # Remove direction suffix
+            if stop_id.endswith('N') or stop_id.endswith('S'):
+                stop_id = stop_id[:-1]
+            
+            if stop_id in stations and trip_id in trip_routes:
+                route_id = trip_routes[trip_id]
+                # Skip FX (express F) - just use F, and skip express variants
+                if route_id not in ['FX', '6X', '7X']:
+                    station_routes[stop_id].add(route_id)
+    
+    # Add routes with color info to stations
+    for station_id, route_ids in station_routes.items():
+        if station_id in stations:
+            # Sort routes and create list with color info
+            sorted_routes = sorted(list(route_ids))
+            stations[station_id].routes = [
+                {
+                    'id': rid,
+                    'name': route_info.get(rid, {}).get('name', rid),
+                    'color': route_info.get(rid, {}).get('color', '808080'),
+                    'text_color': route_info.get(rid, {}).get('text_color', 'FFFFFF')
+                }
+                for rid in sorted_routes
+            ]
 
 def build_connections(gtfs_dir: str) -> List[Connection]:
     """Build connections between stations from stop_times and trips."""
@@ -220,6 +279,10 @@ def main(gtfs_dir: str, output_file: str):
     stations = read_stops(gtfs_dir)
     print(f"Found {len(stations)} stations")
     
+    # Add route information to stations
+    print("Adding route information...")
+    add_routes_to_stations(stations, gtfs_dir)
+    
     # Build connections
     print("Building connections from trips...")
     connections = build_connections(gtfs_dir)
@@ -255,7 +318,8 @@ def main(gtfs_dir: str, output_file: str):
                 'id': s.id,
                 'name': s.name,
                 'lat': s.lat,
-                'lon': s.lon
+                'lon': s.lon,
+                'routes': s.routes
             }
             for sid, s in stations.items()
         },
