@@ -365,35 +365,13 @@
                     
                     map.current.on('click', 'station-circles', handleStationClick);
 
-                    // Hover handler to show travel times
+                    // Hover handler to show station info and travel times
                     map.current.on('mouseenter', 'station-circles', (e) => {
                         map.current.getCanvas().style.cursor = 'pointer';
-                        
-                        if (!stationARef.current || !stationBRef.current) return;
                         
                         const stationId = e.features[0].properties.id;
                         const station = STATIONS.find(s => s.id === stationId);
                         const coordinates = [station.lon, station.lat];
-                        
-                        const timesFromA = TRAVEL_DATA.travel_times[stationARef.current.id] || {};
-                        const timesFromB = TRAVEL_DATA.travel_times[stationBRef.current.id] || {};
-                        
-                        const timeToA = timesFromA[stationId] !== undefined ? timesFromA[stationId] : 999;
-                        const timeToB = timesFromB[stationId] !== undefined ? timesFromB[stationId] : 999;
-                        
-                        // Debug logging for "Not connected" issue
-                        if (timeToA === 999 || timeToB === 999 || timeToA === null || timeToB === null) {
-                            console.log(`DEBUG HOVER: ${station.name} (${stationId})`);
-                            console.log(`  Station A: ${stationARef.current.name} (${stationARef.current.id})`);
-                            console.log(`  Station B: ${stationBRef.current.name} (${stationBRef.current.id})`);
-                            console.log(`  timeToA raw:`, timesFromA[stationId]);
-                            console.log(`  timeToB raw:`, timesFromB[stationId]);
-                            console.log(`  timeToA final:`, timeToA);
-                            console.log(`  timeToB final:`, timeToB);
-                        }
-                        
-                        const timeADisplay = timeToA === 999 ? '<span style="font-size: 10px; opacity: 0.7;">Not connected</span>' : timeToA.toFixed(1) + ' min';
-                        const timeBDisplay = timeToB === 999 ? '<span style="font-size: 10px; opacity: 0.7;">Not connected</span>' : timeToB.toFixed(1) + ' min';
                         
                         // Create MTA-style route badges
                         let routeBadges = '';
@@ -408,38 +386,62 @@
                             }).join('');
                         }
                         
-                        let explanationText = '';
-                        if (timeToA === 999 || timeToB === 999) {
-                            explanationText = `
-                                <div style="margin-top: 5px; padding-top: 3px; border-top: 1px solid #444; font-size: 10px; color: #888; font-style: italic;">
-                                    ${timeToA === 999 && timeToB === 999 ? 
-                                        'This station is on a disconnected network (e.g., Staten Island Railway)' : 
-                                        'This station is not reachable from one of the selected stations'}
+                        // If both stations are selected, show travel times
+                        if (stationARef.current && stationBRef.current) {
+                            const timesFromA = TRAVEL_DATA.travel_times[stationARef.current.id] || {};
+                            const timesFromB = TRAVEL_DATA.travel_times[stationBRef.current.id] || {};
+                            
+                            const timeToA = timesFromA[stationId] !== undefined ? timesFromA[stationId] : 999;
+                            const timeToB = timesFromB[stationId] !== undefined ? timesFromB[stationId] : 999;
+                            
+                            const timeADisplay = timeToA === 999 ? '<span style="font-size: 10px; opacity: 0.7;">Not connected</span>' : timeToA.toFixed(1) + ' min';
+                            const timeBDisplay = timeToB === 999 ? '<span style="font-size: 10px; opacity: 0.7;">Not connected</span>' : timeToB.toFixed(1) + ' min';
+                            
+                            let explanationText = '';
+                            if (timeToA === 999 || timeToB === 999) {
+                                explanationText = `
+                                    <div style="margin-top: 5px; padding-top: 3px; border-top: 1px solid #444; font-size: 10px; color: #888; font-style: italic;">
+                                        ${timeToA === 999 && timeToB === 999 ? 
+                                            'This station is on a disconnected network (e.g., Staten Island Railway)' : 
+                                            'This station is not reachable from one of the selected stations'}
+                                    </div>
+                                `;
+                            }
+                            
+                            const html = `
+                                <div style="font-family: Arial, sans-serif; font-size: 12px; min-width: 150px; color: #fff;">
+                                    <div style="font-weight: bold; margin-bottom: 5px; border-bottom: 1px solid #555; padding-bottom: 3px; color: #fff;">
+                                        ${station.name}
+                                    </div>
+                                    ${routeBadges ? `<div style="margin: 5px 0; line-height: 26px;">${routeBadges}</div>` : ''}
+                                    <div style="color: #FFD700; font-weight: bold; margin: 3px 0;">
+                                        ↓ ${stationARef.current.name}: ${timeADisplay}
+                                    </div>
+                                    <div style="color: #1E90FF; font-weight: bold; margin: 3px 0;">
+                                        ↓ ${stationBRef.current.name}: ${timeBDisplay}
+                                    </div>
+                                    ${timeToA !== 999 && timeToB !== 999 ? `
+                                        <div style="margin-top: 5px; padding-top: 3px; border-top: 1px solid #444; font-size: 11px; color: #aaa;">
+                                            Difference: ${Math.abs(timeToA - timeToB).toFixed(1)} min
+                                        </div>
+                                    ` : explanationText}
                                 </div>
                             `;
-                        }
-                        
-                        const html = `
-                            <div style="font-family: Arial, sans-serif; font-size: 12px; min-width: 150px; color: #fff;">
-                                <div style="font-weight: bold; margin-bottom: 5px; border-bottom: 1px solid #555; padding-bottom: 3px; color: #fff;">
-                                    ${station.name}
-                                </div>
-                                ${routeBadges ? `<div style="margin: 5px 0; line-height: 26px;">${routeBadges}</div>` : ''}
-                                <div style="color: #FFD700; font-weight: bold; margin: 3px 0;">
-                                    ↓ ${stationARef.current.name}: ${timeADisplay}
-                                </div>
-                                <div style="color: #1E90FF; font-weight: bold; margin: 3px 0;">
-                                    ↓ ${stationBRef.current.name}: ${timeBDisplay}
-                                </div>
-                                ${timeToA !== 999 && timeToB !== 999 ? `
-                                    <div style="margin-top: 5px; padding-top: 3px; border-top: 1px solid #444; font-size: 11px; color: #aaa;">
-                                        Difference: ${Math.abs(timeToA - timeToB).toFixed(1)} min
+                            
+                            popup.current.setLngLat(coordinates).setHTML(html).addTo(map.current);
+                        } else {
+                            // Before stations are selected, just show station name and routes
+                            const html = `
+                                <div style="font-family: Arial, sans-serif; font-size: 12px; min-width: 150px; color: #fff;">
+                                    <div style="font-weight: bold; margin-bottom: 5px; color: #fff;">
+                                        ${station.name}
                                     </div>
-                                ` : explanationText}
-                            </div>
-                        `;
-                        
-                        popup.current.setLngLat(coordinates).setHTML(html).addTo(map.current);
+                                    ${routeBadges ? `<div style="margin: 5px 0; line-height: 26px;">${routeBadges}</div>` : ''}
+                                </div>
+                            `;
+                            
+                            popup.current.setLngLat(coordinates).setHTML(html).addTo(map.current);
+                        }
                     });
 
                     map.current.on('mouseleave', 'station-circles', () => {
