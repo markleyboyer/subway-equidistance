@@ -46,8 +46,9 @@ def read_stops(gtfs_dir: str) -> Dict[str, Station]:
             # Filter out platform-level stops, keep only station-level
             stop_id = row['stop_id']
             
-            # MTA uses parent station IDs without direction suffix
-            if 'N' not in stop_id and 'S' not in stop_id:
+            # MTA uses parent station IDs - exclude platform-specific stops that end with N or S
+            # But keep station IDs that have N or S in the middle (like N06, S31)
+            if not (stop_id.endswith('N') or stop_id.endswith('S')):
                 stations[stop_id] = Station(
                     id=stop_id,
                     name=row['stop_name'],
@@ -75,7 +76,11 @@ def build_connections(gtfs_dir: str) -> List[Connection]:
         reader = csv.DictReader(f)
         for row in reader:
             trip_id = row['trip_id']
-            stop_id = row['stop_id'].rstrip('NS')  # Remove direction suffix
+            stop_id = row['stop_id']
+            
+            # Remove direction suffix (N or S) only if it's at the end
+            if stop_id.endswith('N') or stop_id.endswith('S'):
+                stop_id = stop_id[:-1]
             
             # Parse time
             arrival_time = row['arrival_time']
@@ -164,6 +169,38 @@ def build_graph(averaged_connections: Dict[Tuple[str, str], float]) -> Dict[str,
     
     return dict(graph)
 
+def add_transfers(graph: Dict[str, List[Tuple[str, float]]], gtfs_dir: str) -> Dict[str, List[Tuple[str, float]]]:
+    """Add transfer connections to the graph."""
+    transfers_file = f"{gtfs_dir}/transfers.txt"
+    
+    try:
+        with open(transfers_file, 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                from_stop = row['from_stop_id']
+                to_stop = row['to_stop_id']
+                
+                # Skip self-transfers
+                if from_stop == to_stop:
+                    continue
+                
+                # Get transfer time in minutes (default 2 minutes if not specified)
+                transfer_time = float(row.get('min_transfer_time', 120)) / 60  # Convert seconds to minutes
+                
+                # Add transfer connection (bidirectional)
+                if from_stop not in graph:
+                    graph[from_stop] = []
+                if to_stop not in graph:
+                    graph[to_stop] = []
+                    
+                graph[from_stop].append((to_stop, transfer_time))
+                graph[to_stop].append((from_stop, transfer_time))
+                
+    except FileNotFoundError:
+        print("Warning: transfers.txt not found, skipping transfer connections")
+    
+    return graph
+
 def main(gtfs_dir: str, output_file: str):
     print("Reading GTFS data...")
     
@@ -181,7 +218,12 @@ def main(gtfs_dir: str, output_file: str):
     averaged_connections = average_connections(connections)
     
     # Build graph
+    print("Building graph...")
     graph = build_graph(averaged_connections)
+    
+    # Add transfers
+    print("Adding transfer connections...")
+    graph = add_transfers(graph, gtfs_dir)
     
     # Calculate travel times from each station
     print("Calculating travel time matrix...")
