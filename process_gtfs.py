@@ -46,8 +46,12 @@ def read_stops(gtfs_dir: str) -> Dict[str, Station]:
             # Filter out platform-level stops, keep only station-level
             stop_id = row['stop_id']
             
+            # Exclude Staten Island Railway (all S stations)
+            if stop_id.startswith('S'):
+                continue
+            
             # MTA uses parent station IDs - exclude platform-specific stops that end with N or S
-            # But keep station IDs that have N or S in the middle (like N06, S31)
+            # But keep station IDs that have N or S in the middle (like N06)
             if not (stop_id.endswith('N') or stop_id.endswith('S')):
                 stations[stop_id] = Station(
                     id=stop_id,
@@ -81,6 +85,10 @@ def build_connections(gtfs_dir: str) -> List[Connection]:
             # Remove direction suffix (N or S) only if it's at the end
             if stop_id.endswith('N') or stop_id.endswith('S'):
                 stop_id = stop_id[:-1]
+            
+            # Exclude Staten Island Railway
+            if stop_id.startswith('S'):
+                continue
             
             # Parse time
             arrival_time = row['arrival_time']
@@ -179,6 +187,10 @@ def add_transfers(graph: Dict[str, List[Tuple[str, float]]], gtfs_dir: str) -> D
             for row in reader:
                 from_stop = row['from_stop_id']
                 to_stop = row['to_stop_id']
+                
+                # Skip Staten Island Railway transfers
+                if from_stop.startswith('S') or to_stop.startswith('S'):
+                    continue
                 
                 # Skip self-transfers
                 if from_stop == to_stop:
