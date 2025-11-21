@@ -257,6 +257,62 @@
             const stationBRef = useRef(null);
             const selectionModeRef = useRef(true);
             
+            // Helper function to reconstruct path using Dijkstra from travel times
+            const reconstructPath = (fromStationId, toStationId) => {
+                if (fromStationId === toStationId) {
+                    return [fromStationId];
+                }
+                
+                // Build a graph from travel_times - find direct connections
+                const graph = {};
+                for (const [source, destinations] of Object.entries(TRAVEL_DATA.travel_times)) {
+                    graph[source] = [];
+                    for (const [dest, time] of Object.entries(destinations)) {
+                        if (time !== null && time > 0 && time < 10) { // Direct connections typically < 10 min
+                            graph[source].push({ id: dest, time });
+                        }
+                    }
+                }
+                
+                // Dijkstra's algorithm to find shortest path
+                const distances = {};
+                const previous = {};
+                const pq = [[0, fromStationId]]; // [distance, node]
+                const visited = new Set();
+                
+                distances[fromStationId] = 0;
+                
+                while (pq.length > 0) {
+                    pq.sort((a, b) => a[0] - b[0]);
+                    const [currentDist, currentId] = pq.shift();
+                    
+                    if (visited.has(currentId)) continue;
+                    visited.add(currentId);
+                    
+                    if (currentId === toStationId) break;
+                    
+                    const neighbors = graph[currentId] || [];
+                    for (const neighbor of neighbors) {
+                        const newDist = currentDist + neighbor.time;
+                        if (!(neighbor.id in distances) || newDist < distances[neighbor.id]) {
+                            distances[neighbor.id] = newDist;
+                            previous[neighbor.id] = currentId;
+                            pq.push([newDist, neighbor.id]);
+                        }
+                    }
+                }
+                
+                // Reconstruct path
+                const path = [];
+                let current = toStationId;
+                while (current) {
+                    path.unshift(current);
+                    current = previous[current];
+                }
+                
+                return path.length > 0 && path[0] === fromStationId ? path : [];
+            };
+            
             useEffect(() => {
                 stationARef.current = stationA;
             }, [stationA]);
@@ -397,6 +453,37 @@
                             const timeADisplay = timeToA === 999 ? '<span style="font-size: 10px; opacity: 0.7;">Not connected</span>' : timeToA.toFixed(1) + ' min';
                             const timeBDisplay = timeToB === 999 ? '<span style="font-size: 10px; opacity: 0.7;">Not connected</span>' : timeToB.toFixed(1) + ' min';
                             
+                            // Reconstruct paths
+                            let pathFromA = [];
+                            let pathFromB = [];
+                            if (timeToA !== 999 && stationId !== stationARef.current.id) {
+                                pathFromA = reconstructPath(stationARef.current.id, stationId);
+                            }
+                            if (timeToB !== 999 && stationId !== stationBRef.current.id) {
+                                pathFromB = reconstructPath(stationBRef.current.id, stationId);
+                            }
+                            
+                            // Format path display (show first, ..., last few stations)
+                            const formatPath = (path) => {
+                                if (path.length === 0) return '';
+                                if (path.length <= 4) {
+                                    return path.map(id => STATIONS.find(s => s.id === id)?.name || id).join(' → ');
+                                }
+                                const first = STATIONS.find(s => s.id === path[0])?.name;
+                                const secondLast = STATIONS.find(s => s.id === path[path.length - 2])?.name;
+                                const last = STATIONS.find(s => s.id === path[path.length - 1])?.name;
+                                return `${first} → ... (${path.length - 2} stops) ... → ${secondLast} → ${last}`;
+                            };
+                            
+                            let pathDisplayA = '';
+                            let pathDisplayB = '';
+                            if (pathFromA.length > 1) {
+                                pathDisplayA = `<div style="font-size: 10px; color: #FFD700; margin-top: 2px; opacity: 0.8;">${formatPath(pathFromA)}</div>`;
+                            }
+                            if (pathFromB.length > 1) {
+                                pathDisplayB = `<div style="font-size: 10px; color: #1E90FF; margin-top: 2px; opacity: 0.8;">${formatPath(pathFromB)}</div>`;
+                            }
+                            
                             let explanationText = '';
                             if (timeToA === 999 || timeToB === 999) {
                                 explanationText = `
@@ -409,7 +496,7 @@
                             }
                             
                             const html = `
-                                <div style="font-family: Arial, sans-serif; font-size: 12px; min-width: 150px; color: #fff;">
+                                <div style="font-family: Arial, sans-serif; font-size: 12px; min-width: 200px; max-width: 350px; color: #fff;">
                                     <div style="font-weight: bold; margin-bottom: 5px; border-bottom: 1px solid #555; padding-bottom: 3px; color: #fff;">
                                         ${station.name}
                                     </div>
@@ -417,9 +504,11 @@
                                     <div style="color: #FFD700; font-weight: bold; margin: 3px 0;">
                                         ↓ ${stationARef.current.name}: ${timeADisplay}
                                     </div>
-                                    <div style="color: #1E90FF; font-weight: bold; margin: 3px 0;">
+                                    ${pathDisplayA}
+                                    <div style="color: #1E90FF; font-weight: bold; margin: 3px 0; margin-top: 8px;">
                                         ↓ ${stationBRef.current.name}: ${timeBDisplay}
                                     </div>
+                                    ${pathDisplayB}
                                     ${timeToA !== 999 && timeToB !== 999 ? `
                                         <div style="margin-top: 5px; padding-top: 3px; border-top: 1px solid #444; font-size: 11px; color: #aaa;">
                                             Difference: ${Math.abs(timeToA - timeToB).toFixed(1)} min
