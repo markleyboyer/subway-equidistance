@@ -747,14 +747,13 @@
                             if (Math.abs(diff) <= 3) {
                                 // Equidistant - gradient green based on average distance to both stations
                                 const avgTime = (timeToA + timeToB) / 2;
-                                // Closest equidistant stations (avg 5-15 min) = bright green
-                                // Farther equidistant stations (avg 35+ min) = dark green
-                                const minAvg = 5; // minutes
-                                const maxAvg = 35; // minutes
-                                const greenRatio = Math.max(0, Math.min(1, (maxAvg - avgTime) / (maxAvg - minAvg)));
+                                // Adjust range for better gradient distribution
+                                const minAvg = 8; // minutes - closest stations
+                                const maxAvg = 30; // minutes - farthest stations
+                                const distanceRatio = Math.max(0, Math.min(1, (avgTime - minAvg) / (maxAvg - minAvg)));
                                 
-                                // Bright green: rgb(0, 255, 0), Dark green: rgb(0, 100, 0)
-                                const g = Math.floor(100 + (255 - 100) * greenRatio);
+                                // Bright green center: rgb(0, 255, 0), Dark green edges: rgb(0, 40, 0)
+                                const g = Math.floor(255 - (255 - 40) * distanceRatio);
                                 color = `rgb(0, ${g}, 0)`;
                                 isEquidistant = true;
                             } else if (diff < -3) {
@@ -778,7 +777,7 @@
                             }
                         }
                         
-                        return { id: station.id, color, isEquidistant, shouldShow };
+                        return { id: station.id, color, isEquidistant, shouldShow, avgTime: isEquidistant ? (timeToA + timeToB) / 2 : null };
                     });
 
                     // Get IDs for different categories
@@ -806,6 +805,23 @@
                         1
                     ]);
                     
+                    // Create stroke color data for gradient effect on equidistant stations
+                    const strokeColorData = [];
+                    stationColorData.forEach(s => {
+                        if (s.isEquidistant && s.avgTime !== null) {
+                            // Calculate stroke color gradient from bright white to medium gray
+                            const minAvg = 8; // minutes - brightest white
+                            const maxAvg = 30; // minutes - medium gray
+                            const strokeRatio = Math.max(0, Math.min(1, (s.avgTime - minAvg) / (maxAvg - minAvg)));
+                            
+                            // White: rgb(255, 255, 255), Dark gray: rgb(80, 80, 80)
+                            const grayValue = Math.floor(255 - (255 - 80) * strokeRatio);
+                            const strokeColor = `rgb(${grayValue}, ${grayValue}, ${grayValue})`;
+                            
+                            strokeColorData.push(s.id, strokeColor);
+                        }
+                    });
+                    
                     // Set station colors
                     map.current.setPaintProperty('station-circles', 'circle-color', [
                         'match',
@@ -814,10 +830,15 @@
                         '#ffffff'
                     ]);
                     
-                    // Set station stroke color - WHITE for equidistant stations only
+                    // Set station stroke color - gradient from white to gray for equidistant stations
                     map.current.setPaintProperty('station-circles', 'circle-stroke-color', [
                         'case',
-                        ['in', ['get', 'id'], ['literal', equidistantIds]], '#ffffff',
+                        ['in', ['get', 'id'], ['literal', equidistantIds]], [
+                            'match',
+                            ['get', 'id'],
+                            ...strokeColorData,
+                            '#ffffff' // fallback
+                        ],
                         'rgba(0,0,0,0)' // Transparent for non-equidistant
                     ]);
                     
