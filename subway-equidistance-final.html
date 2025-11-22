@@ -745,8 +745,17 @@
                             const maxDiff = 20; // minutes - used for gradient scaling
                             
                             if (Math.abs(diff) <= 3) {
-                                // Equidistant - pure green
-                                color = '#00FF00';
+                                // Equidistant - gradient green based on average distance to both stations
+                                const avgTime = (timeToA + timeToB) / 2;
+                                // Closest equidistant stations (avg 5-15 min) = bright green
+                                // Farther equidistant stations (avg 35+ min) = dark green
+                                const minAvg = 5; // minutes
+                                const maxAvg = 35; // minutes
+                                const greenRatio = Math.max(0, Math.min(1, (maxAvg - avgTime) / (maxAvg - minAvg)));
+                                
+                                // Bright green: rgb(0, 255, 0), Dark green: rgb(0, 100, 0)
+                                const g = Math.floor(100 + (255 - 100) * greenRatio);
+                                color = `rgb(0, ${g}, 0)`;
                                 isEquidistant = true;
                             } else if (diff < -3) {
                                 // Closer to A (yellow)
@@ -783,7 +792,8 @@
                         const station = STATIONS.find(st => st.id === s.id);
                         const timeToA = timesFromA[s.id];
                         const timeToB = timesFromB[s.id];
-                        addDebugLog(`  ${station.name}: ${timeToA.toFixed(1)}min from A, ${timeToB.toFixed(1)}min from B`, 'info');
+                        const avgTime = (timeToA + timeToB) / 2;
+                        addDebugLog(`  ${station.name}: ${timeToA.toFixed(1)}min from A, ${timeToB.toFixed(1)}min from B, avg: ${avgTime.toFixed(1)}min`, 'info');
                     });
                     if (equidistantStations.length > 5) {
                         addDebugLog(`  ... and ${equidistantStations.length - 5} more`, 'info');
